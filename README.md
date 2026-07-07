@@ -1,108 +1,146 @@
-# AdsPower + Claude - Automacao de Perfis
+# AdsPower + Meta Ads - Gerenciamento de Campanhas
 
-Ferramentas para conectar e automatizar o AdsPower usando a API Local e o MCP Server.
+Ferramentas para gerenciar perfis AdsPower e campanhas Meta Ads de forma padronizada e segura.
+
+## IMPORTANTE - Seguranca das Contas
+
+- Campanhas sao SEMPRE criadas **PAUSADAS** - ative manualmente apos revisar
+- Scripts de analise sao **somente leitura** - nao modificam nada nas contas
+- Use a **Marketing API oficial** da Meta (nao automacao de UI)
+- **Nunca** automatize acoes dentro do Facebook/Instagram (curtir, postar, etc.)
+- **Nunca** commite tokens ou API keys - use variaveis de ambiente
 
 ## Pre-requisitos
 
-- AdsPower instalado e rodando com a API Local ativada
-- Python 3.8+ (para scripts de automacao)
-- `pip install requests selenium` (dependencias)
+- AdsPower instalado com API Local ativada (para gerenciamento de perfis)
+- Python 3.8+
+- Token da Meta Marketing API (ver setup abaixo)
+- `pip install -r requirements.txt`
 
-## Configuracao Rapida
+## Setup
 
-### 1. Verificar conexao com o AdsPower
+### 1. Variaveis de ambiente
 
 ```bash
-# Usar a URL e API Key do painel de configuracoes do AdsPower
+# AdsPower
 export ADSPOWER_API_URL="http://127.0.0.1:50325"
-export ADSPOWER_API_KEY="sua-api-key-aqui"
+export ADSPOWER_API_KEY="sua-api-key"
 
-python scripts/adspower_client.py status
+# Meta Marketing API
+export META_ACCESS_TOKEN="seu-token-aqui"
+export META_AD_ACCOUNT_ID="act_123456789"
 ```
 
-### 2. Listar e gerenciar perfis
+### 2. Obter token da Meta Marketing API
+
+1. Acesse https://developers.facebook.com
+2. Crie um app do tipo "Business"
+3. Adicione o produto "Marketing API"
+4. Gere um token com permissoes: `ads_management`, `ads_read`, `read_insights`
+
+## Uso - Campanhas Meta
+
+### Listar campanhas
 
 ```bash
+cd scripts/meta
+python campaigns.py list
+python campaigns.py list --status ACTIVE
+```
+
+### Templates de campanha disponiveis
+
+```bash
+python campaigns.py templates
+```
+
+Templates: `conversao_trafego`, `conversao_vendas`, `engajamento`, `leads`, `awareness`
+
+### Criar campanha padronizada
+
+```bash
+# Campanha criada PAUSADA por seguranca
+python campaigns.py create "Vendas - Produto X" --template conversao_vendas --daily-budget 5000
+```
+
+### Conjuntos de anuncios (Ad Sets)
+
+```bash
+python adsets.py targeting           # Ver templates de segmentacao
+python adsets.py list                # Listar ad sets
+python adsets.py create "Publico BR" --campaign-id 123 --targeting brasil_amplo --daily-budget 3000
+```
+
+## Uso - Analise de Campanhas
+
+### Resumo da conta
+
+```bash
+cd scripts/meta
+python insights.py summary --period last_7d
+```
+
+### Comparar campanhas
+
+```bash
+python insights.py compare --period last_30d --sort spend
+```
+
+### Exportar relatorio CSV
+
+```bash
+python insights.py export --period last_30d --output relatorio.csv
+```
+
+### Alertas de gasto
+
+```bash
+python insights.py alerts --limit 10000  # Alerta acima de R$100/dia
+```
+
+### Insights detalhados
+
+```bash
+python insights.py insights --period last_7d
+python insights.py insights --campaign-id 123456 --breakdown age,gender
+```
+
+## Uso - Perfis AdsPower
+
+```bash
+python scripts/adspower_client.py status
 python scripts/adspower_client.py list
 python scripts/adspower_client.py open <user_id>
 python scripts/adspower_client.py close <user_id>
-python scripts/adspower_client.py create "Meu Perfil"
 ```
 
-### 3. Automacao com Selenium
+## Conectar via MCP Server (Claude Code local)
 
-```bash
-pip install selenium
-python scripts/example_automation.py
-```
+O AdsPower oferece um MCP Server para controle por linguagem natural.
+**Requer Claude Code CLI rodando na sua maquina local.**
 
-## Conectar via MCP Server (Claude Code CLI / Claude Desktop)
-
-O AdsPower oferece um MCP Server que permite controlar perfis diretamente pelo Claude usando linguagem natural.
-
-### Claude Code CLI
-
-Adicione ao `.claude/settings.json` do projeto ou `~/.claude/settings.json` global:
+Adicione ao `.claude/settings.json` ou `~/.claude/settings.json`:
 
 ```json
 {
   "mcpServers": {
     "adspower-local-api": {
       "command": "npx",
-      "args": [
-        "-y",
-        "local-api-mcp-typescript",
-        "--base-url", "http://127.0.0.1:50325"
-      ]
+      "args": ["-y", "local-api-mcp-typescript", "--base-url", "http://127.0.0.1:50325"]
     }
   }
 }
 ```
-
-### Claude Desktop
-
-Adicione ao arquivo de configuracao (`claude_desktop_config.json`):
-
-- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-
-```json
-{
-  "mcpServers": {
-    "adspower-local-api": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "local-api-mcp-typescript",
-        "--base-url", "http://127.0.0.1:50325"
-      ]
-    }
-  }
-}
-```
-
-Apos configurar, reinicie o Claude e voce podera usar comandos como:
-- "Liste meus perfis do AdsPower"
-- "Abra o perfil X"
-- "Crie um novo perfil chamado Y"
 
 ## Estrutura
 
 ```
 scripts/
-  adspower_client.py      # Cliente da API Local (CLI + biblioteca)
-  example_automation.py   # Exemplo de automacao com Selenium
+  adspower_client.py        # Cliente AdsPower Local API
+  meta/
+    config.py               # Configuracao da Meta API
+    api_client.py            # Cliente base da Marketing API
+    campaigns.py             # Criar/listar campanhas com templates
+    adsets.py                # Criar/listar ad sets com segmentacao
+    insights.py              # Analise e relatorios de performance
 ```
-
-## Referencia da API
-
-| Comando | Descricao |
-|---------|-----------|
-| `status` | Verifica conexao com a API |
-| `list` | Lista perfis |
-| `groups` | Lista grupos |
-| `open <id>` | Abre perfil no navegador |
-| `close <id>` | Fecha perfil |
-| `check <id>` | Verifica se perfil esta ativo |
-| `create <nome>` | Cria novo perfil |
-| `delete <id>` | Deleta perfil(s) |
