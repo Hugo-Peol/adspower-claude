@@ -1,0 +1,19 @@
+{
+  "contas": [
+    {
+      "nome": "Conta Principal",
+      "ad_account_id": "act_111111111",
+      "access_token": "SEU_TOKEN_AQUI"
+    },
+    {
+      "nome": "Conta Cliente X",
+      "ad_account_id": "act_222222222",
+      "access_token": "SEU_TOKEN_AQUI"
+    },
+    {
+      "nome": "Conta Cliente Y",
+      "ad_account_id": "act_333333333",
+      "access_token": "SEU_TOKEN_AQUI"
+    }
+  ]
+}
