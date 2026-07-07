@@ -1,55 +1,197 @@
-"""Gerenciamento de campanhas Meta Ads.
+"""v1.0 - Criacao de campanhas padronizadas multi-conta.
 
-Permite criar campanhas padronizadas a partir de templates,
-listar campanhas existentes e duplicar campanhas.
+Cria campanhas PAUSADAS em uma ou mais contas usando templates
+e o sistema de tags para nomenclatura padronizada.
 
-SEGURANCA: Este script usa a Marketing API oficial da Meta.
-Nao viola termos de uso e nao causa risco para suas contas.
+Todas as campanhas sao criadas PAUSADAS por seguranca.
 """
 
 import json
-from api_client import get, post, delete
-from config import AD_ACCOUNT_ID
+import os
+import time
+import requests
+from datetime import datetime
+from naming import build_name, validate_tags, list_tags
+
+ACCOUNTS_FILE = os.path.join(os.path.dirname(__file__), "accounts.json")
+API_VERSION = "v21.0"
+BASE_URL = f"https://graph.facebook.com/{API_VERSION}"
+
+DELAY_BETWEEN_ACCOUNTS_SEC = 3
 
 
-CAMPAIGN_TEMPLATES = {
-    "conversao_trafego": {
-        "objective": "OUTCOME_TRAFFIC",
-        "status": "PAUSED",
-        "special_ad_categories": [],
-        "bid_strategy": "LOWEST_COST_WITHOUT_CAP",
-    },
-    "conversao_vendas": {
-        "objective": "OUTCOME_SALES",
-        "status": "PAUSED",
-        "special_ad_categories": [],
-        "bid_strategy": "LOWEST_COST_WITHOUT_CAP",
-    },
-    "engajamento": {
-        "objective": "OUTCOME_ENGAGEMENT",
-        "status": "PAUSED",
-        "special_ad_categories": [],
-        "bid_strategy": "LOWEST_COST_WITHOUT_CAP",
-    },
-    "leads": {
-        "objective": "OUTCOME_LEADS",
-        "status": "PAUSED",
-        "special_ad_categories": [],
-        "bid_strategy": "LOWEST_COST_WITHOUT_CAP",
-    },
-    "awareness": {
-        "objective": "OUTCOME_AWARENESS",
-        "status": "PAUSED",
-        "special_ad_categories": [],
-        "bid_strategy": "LOWEST_COST_WITHOUT_CAP",
-    },
+def load_accounts(account_filter=None):
+    """Carrega contas do accounts.json.
+
+    Args:
+        account_filter: Nome ou lista de nomes para filtrar (None = todas)
+    """
+    if not os.path.exists(ACCOUNTS_FILE):
+        print(f"ERRO: Arquivo {ACCOUNTS_FILE} nao encontrado.")
+        print(f"Copie accounts.json.example para accounts.json e preencha seus dados.")
+        return []
+
+    with open(ACCOUNTS_FILE, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    accounts = data.get("contas", [])
+
+    if account_filter:
+        if isinstance(account_filter, str):
+            account_filter = [account_filter]
+        accounts = [a for a in accounts if a["nome"] in account_filter]
+
+    return accounts
+
+
+def _api_post(access_token, endpoint, params):
+    params["access_token"] = access_token
+    url = f"{BASE_URL}/{endpoint}"
+    resp = requests.post(url, data=params, timeout=30)
+    data = resp.json()
+    if "error" in data:
+        err = data["error"]
+        raise RuntimeError(
+            f"Meta API error {err.get('code', '?')}: {err.get('message', 'Unknown')}"
+        )
+    return data
+
+
+def _api_get(access_token, endpoint, params=None):
+    if params is None:
+        params = {}
+    params["access_token"] = access_token
+    url = f"{BASE_URL}/{endpoint}"
+    resp = requests.get(url, params=params, timeout=30)
+    data = resp.json()
+    if "error" in data:
+        err = data["error"]
+        raise RuntimeError(
+            f"Meta API error {err.get('code', '?')}: {err.get('message', 'Unknown')}"
+        )
+    return data
+
+
+OBJECTIVE_MAP = {
+    "ASC": "OUTCOME_SALES",
+    "MANUAL": "OUTCOME_TRAFFIC",
+    "DCT": "OUTCOME_TRAFFIC",
 }
 
 
-def list_campaigns(status_filter=None, limit=25):
-    """Lista campanhas da conta."""
+def create_campaign_on_account(account, campaign_name, objective="OUTCOME_TRAFFIC",
+                                bid_strategy="LOWEST_COST_WITHOUT_CAP",
+                                daily_budget_cents=None, lifetime_budget_cents=None,
+                                special_ad_categories=None):
+    """Cria uma campanha PAUSADA em uma conta especifica."""
     params = {
-        "fields": "id,name,objective,status,daily_budget,lifetime_budget,bid_strategy,created_time",
+        "name": campaign_name,
+        "objective": objective,
+        "status": "PAUSED",
+        "bid_strategy": bid_strategy,
+        "special_ad_categories": json.dumps(special_ad_categories or []),
+    }
+
+    if daily_budget_cents:
+        params["daily_budget"] = str(daily_budget_cents)
+    if lifetime_budget_cents:
+        params["lifetime_budget"] = str(lifetime_budget_cents)
+
+    ad_account_id = account["ad_account_id"]
+    data = _api_post(account["access_token"], f"{ad_account_id}/campaigns", params)
+    return data
+
+
+def deploy_campaign(tags_config, accounts=None, daily_budget_cents=None,
+                    lifetime_budget_cents=None, special_ad_categories=None, dry_run=False):
+    """Cria uma campanha padronizada em uma ou mais contas.
+
+    Args:
+        tags_config: Dict com as tags da campanha:
+            produto, orcamento, estrutura, ad_name, segmentacao,
+            tipo_campanha, data, gestor, variacao
+        accounts: Lista de nomes de conta (None = todas)
+        daily_budget_cents: Orcamento diario em centavos (5000 = R$50)
+        lifetime_budget_cents: Orcamento vitalicio em centavos
+        special_ad_categories: Lista de categorias especiais (ex: ["HOUSING"])
+        dry_run: Se True, apenas mostra o que seria criado sem executar
+    """
+    errors = validate_tags(**tags_config)
+    if errors:
+        print("\nERRO - Tags invalidas:")
+        for e in errors:
+            print(f"  - {e}")
+        return {"created": [], "errors": errors}
+
+    account_list = load_accounts(accounts)
+    if not account_list:
+        print("Nenhuma conta encontrada.")
+        return {"created": [], "errors": ["Nenhuma conta encontrada"]}
+
+    tipo = tags_config.get("tipo_campanha", "MANUAL")
+    objective = OBJECTIVE_MAP.get(tipo, "OUTCOME_TRAFFIC")
+
+    created = []
+    deploy_errors = []
+
+    print(f"\n{'='*70}")
+    print(f"  DEPLOY DE CAMPANHA {'(DRY RUN)' if dry_run else ''}")
+    print(f"{'='*70}")
+
+    for i, account in enumerate(account_list):
+        conta_tag = tags_config.get("conta") or account.get("tag", account["nome"])
+        current_tags = {**tags_config, "conta": conta_tag}
+        campaign_name = build_name(**{
+            k: v for k, v in current_tags.items()
+            if k in ("produto", "orcamento", "estrutura", "ad_name",
+                     "segmentacao", "tipo_campanha", "data", "conta", "gestor", "variacao")
+        })
+
+        print(f"\n  Conta: {account['nome']} ({account['ad_account_id']})")
+        print(f"  Nome:  {campaign_name}")
+        print(f"  Objetivo: {objective}")
+        if daily_budget_cents:
+            print(f"  Orcamento: R$ {daily_budget_cents / 100:.2f}/dia")
+        print(f"  Status: PAUSADA")
+
+        if dry_run:
+            print(f"  >> Dry run - nao criada")
+            created.append({"account": account["nome"], "name": campaign_name, "dry_run": True})
+            continue
+
+        try:
+            result = create_campaign_on_account(
+                account, campaign_name, objective,
+                daily_budget_cents=daily_budget_cents,
+                lifetime_budget_cents=lifetime_budget_cents,
+                special_ad_categories=special_ad_categories,
+            )
+            campaign_id = result.get("id", "?")
+            print(f"  >> Criada! ID: {campaign_id}")
+            created.append({
+                "account": account["nome"],
+                "name": campaign_name,
+                "id": campaign_id,
+            })
+        except Exception as e:
+            print(f"  >> ERRO: {e}")
+            deploy_errors.append({"account": account["nome"], "error": str(e)})
+
+        if i < len(account_list) - 1:
+            print(f"  (aguardando {DELAY_BETWEEN_ACCOUNTS_SEC}s antes da proxima conta...)")
+            time.sleep(DELAY_BETWEEN_ACCOUNTS_SEC)
+
+    print(f"\n{'='*70}")
+    print(f"  RESULTADO: {len(created)} criadas, {len(deploy_errors)} erros")
+    print(f"{'='*70}\n")
+
+    return {"created": created, "errors": deploy_errors}
+
+
+def list_campaigns_on_account(account, status_filter=None, limit=25):
+    """Lista campanhas de uma conta."""
+    params = {
+        "fields": "id,name,objective,status,daily_budget,lifetime_budget,created_time",
         "limit": limit,
     }
     if status_filter:
@@ -59,147 +201,104 @@ def list_campaigns(status_filter=None, limit=25):
             "value": status_filter if isinstance(status_filter, list) else [status_filter],
         }])
 
-    data = get(f"{AD_ACCOUNT_ID}/campaigns", params)
-    campaigns = data.get("data", [])
-
-    print(f"\nCampanhas encontradas: {len(campaigns)}")
-    print("-" * 80)
-    for c in campaigns:
-        budget = c.get("daily_budget") or c.get("lifetime_budget") or "N/A"
-        if budget != "N/A":
-            budget = f"R$ {int(budget) / 100:.2f}"
-        print(f"  [{c['status']:8s}] {c['name']}")
-        print(f"            ID: {c['id']} | Objetivo: {c['objective']} | Orcamento: {budget}")
-    print("-" * 80)
-    return campaigns
+    data = _api_get(account["access_token"], f"{account['ad_account_id']}/campaigns", params)
+    return data.get("data", [])
 
 
-def create_campaign(name, template_name, daily_budget_cents=None, lifetime_budget_cents=None):
-    """Cria uma campanha a partir de um template padronizado.
+def list_all_campaigns(accounts=None, status_filter=None, limit=25):
+    """Lista campanhas de todas as contas."""
+    account_list = load_accounts(accounts)
 
-    IMPORTANTE: Campanhas sao criadas PAUSADAS por seguranca.
-    Ative manualmente apos revisar no Gerenciador de Anuncios.
+    print(f"\n{'='*80}")
+    for account in account_list:
+        print(f"\n  {account['nome']} ({account['ad_account_id']})")
+        print(f"  {'-'*60}")
 
-    Args:
-        name: Nome da campanha
-        template_name: Nome do template (ver CAMPAIGN_TEMPLATES)
-        daily_budget_cents: Orcamento diario em centavos (ex: 5000 = R$50)
-        lifetime_budget_cents: Orcamento vitalicio em centavos
-    """
-    if template_name not in CAMPAIGN_TEMPLATES:
-        available = ", ".join(CAMPAIGN_TEMPLATES.keys())
-        raise ValueError(f"Template '{template_name}' nao encontrado. Disponiveis: {available}")
-
-    template = CAMPAIGN_TEMPLATES[template_name].copy()
-    template["name"] = name
-
-    if daily_budget_cents:
-        template["daily_budget"] = str(daily_budget_cents)
-    if lifetime_budget_cents:
-        template["lifetime_budget"] = str(lifetime_budget_cents)
-
-    print(f"\nCriando campanha: {name}")
-    print(f"  Template: {template_name}")
-    print(f"  Objetivo: {template['objective']}")
-    print(f"  Status: PAUSADA (por seguranca)")
-
-    data = post(f"{AD_ACCOUNT_ID}/campaigns", params=template)
-    campaign_id = data.get("id", "")
-    print(f"  Campanha criada com sucesso! ID: {campaign_id}")
-    print(f"  AVISO: Campanha criada PAUSADA. Ative no Gerenciador de Anuncios apos revisar.")
-    return data
-
-
-def create_campaigns_batch(campaigns_config):
-    """Cria varias campanhas de uma vez.
-
-    Args:
-        campaigns_config: Lista de dicts com keys: name, template, daily_budget_cents
-
-    Exemplo:
-        create_campaigns_batch([
-            {"name": "Vendas - Produto A", "template": "conversao_vendas", "daily_budget_cents": 5000},
-            {"name": "Vendas - Produto B", "template": "conversao_vendas", "daily_budget_cents": 3000},
-            {"name": "Leads - Landing Page", "template": "leads", "daily_budget_cents": 2000},
-        ])
-    """
-    print(f"\nCriando {len(campaigns_config)} campanhas em lote...")
-    print("=" * 80)
-
-    created = []
-    errors = []
-
-    for i, config in enumerate(campaigns_config, 1):
         try:
-            result = create_campaign(
-                name=config["name"],
-                template_name=config["template"],
-                daily_budget_cents=config.get("daily_budget_cents"),
-                lifetime_budget_cents=config.get("lifetime_budget_cents"),
-            )
-            created.append(result)
+            campaigns = list_campaigns_on_account(account, status_filter, limit)
+            if not campaigns:
+                print(f"    Nenhuma campanha encontrada.")
+                continue
+            for c in campaigns:
+                budget = c.get("daily_budget") or c.get("lifetime_budget") or "N/A"
+                if budget != "N/A":
+                    budget = f"R$ {int(budget) / 100:.2f}"
+                print(f"    [{c['status']:8s}] {c['name']}")
+                print(f"              ID: {c['id']} | Orcamento: {budget}")
         except Exception as e:
-            print(f"  ERRO na campanha '{config.get('name', '?')}': {e}")
-            errors.append({"config": config, "error": str(e)})
+            print(f"    ERRO: {e}")
 
-    print("=" * 80)
-    print(f"Resultado: {len(created)} criadas, {len(errors)} erros")
-    if errors:
-        print("Campanhas com erro:")
-        for e in errors:
-            print(f"  - {e['config'].get('name', '?')}: {e['error']}")
-
-    return {"created": created, "errors": errors}
-
-
-def pause_campaign(campaign_id):
-    """Pausa uma campanha."""
-    data = post(campaign_id, params={"status": "PAUSED"})
-    print(f"Campanha {campaign_id} pausada.")
-    return data
-
-
-def list_templates():
-    """Mostra os templates disponiveis."""
-    print("\nTemplates de campanha disponiveis:")
-    print("-" * 60)
-    for name, config in CAMPAIGN_TEMPLATES.items():
-        print(f"  {name}")
-        print(f"    Objetivo: {config['objective']}")
-        print(f"    Estrategia de lance: {config['bid_strategy']}")
-        print()
-    return CAMPAIGN_TEMPLATES
+    print(f"\n{'='*80}\n")
 
 
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Gerenciador de Campanhas Meta")
+    parser = argparse.ArgumentParser(description="v1.0 - Campanhas Multi-Conta com Tags")
     sub = parser.add_subparsers(dest="command")
 
-    sub.add_parser("templates", help="Listar templates disponiveis")
+    # Tags
+    sub.add_parser("tags", help="Listar todas as tags disponiveis")
 
-    lp = sub.add_parser("list", help="Listar campanhas")
-    lp.add_argument("--status", choices=["ACTIVE", "PAUSED", "ARCHIVED"], default=None)
-    lp.add_argument("--limit", type=int, default=25)
+    # List
+    lp = sub.add_parser("list", help="Listar campanhas de todas as contas")
+    lp.add_argument("--contas", nargs="*", default=None, help="Filtrar por nomes de conta")
+    lp.add_argument("--status", default=None, choices=["ACTIVE", "PAUSED", "ARCHIVED"])
 
-    cp = sub.add_parser("create", help="Criar campanha")
-    cp.add_argument("name", help="Nome da campanha")
-    cp.add_argument("--template", required=True, choices=list(CAMPAIGN_TEMPLATES.keys()))
-    cp.add_argument("--daily-budget", type=int, help="Orcamento diario em centavos (5000 = R$50)")
+    # Deploy
+    dp = sub.add_parser("deploy", help="Criar campanha em uma ou mais contas")
+    dp.add_argument("--produto", required=True, help="Tag do produto (ex: DS)")
+    dp.add_argument("--orcamento", required=True, help="Tag do orcamento (ex: CBO)")
+    dp.add_argument("--estrutura", required=True, help="Estrutura (ex: 1-3-1)")
+    dp.add_argument("--ad-name", required=True, help="Nome do anuncio (ex: ADLAT23)")
+    dp.add_argument("--segmentacao", required=True, nargs="+", help="Tag(s) de segmentacao")
+    dp.add_argument("--tipo", required=True, help="Tipo de campanha (ex: ASC)")
+    dp.add_argument("--data", default=None, help="Data DD-MM-AA (default: hoje)")
+    dp.add_argument("--gestor", default=None, help="Nome do gestor")
+    dp.add_argument("--variacao", default=None, help="Variacao (ex: Copy 4)")
+    dp.add_argument("--contas", nargs="*", default=None, help="Contas alvo (default: todas)")
+    dp.add_argument("--daily-budget", type=int, default=None, help="Centavos (5000 = R$50)")
+    dp.add_argument("--lifetime-budget", type=int, default=None, help="Centavos")
+    dp.add_argument("--dry-run", action="store_true", help="Simular sem criar")
 
-    pp = sub.add_parser("pause", help="Pausar campanha")
-    pp.add_argument("campaign_id")
+    # Parse name
+    pp = sub.add_parser("parse", help="Decompor nome de campanha existente")
+    pp.add_argument("name")
 
     args = parser.parse_args()
 
-    if args.command == "templates":
-        list_templates()
+    if args.command == "tags":
+        list_tags()
+
     elif args.command == "list":
-        list_campaigns(status_filter=args.status, limit=args.limit)
-    elif args.command == "create":
-        create_campaign(args.name, args.template, daily_budget_cents=args.daily_budget)
-    elif args.command == "pause":
-        pause_campaign(args.campaign_id)
+        list_all_campaigns(accounts=args.contas, status_filter=args.status)
+
+    elif args.command == "deploy":
+        tags_config = {
+            "produto": args.produto,
+            "orcamento": args.orcamento,
+            "estrutura": args.estrutura,
+            "ad_name": args.ad_name,
+            "segmentacao": args.segmentacao,
+            "tipo_campanha": args.tipo,
+            "data": args.data,
+            "gestor": args.gestor,
+            "variacao": args.variacao,
+        }
+        deploy_campaign(
+            tags_config,
+            accounts=args.contas,
+            daily_budget_cents=args.daily_budget,
+            lifetime_budget_cents=args.lifetime_budget,
+            dry_run=args.dry_run,
+        )
+
+    elif args.command == "parse":
+        from naming import parse_name
+        result = parse_name(args.name)
+        print("\nTags encontradas:")
+        for k, v in result.items():
+            print(f"  {k}: {v}")
+
     else:
         parser.print_help()

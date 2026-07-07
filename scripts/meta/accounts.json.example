@@ -2,16 +2,19 @@
   "contas": [
     {
       "nome": "Conta Principal",
+      "tag": "Conta01",
       "ad_account_id": "act_111111111",
       "access_token": "SEU_TOKEN_AQUI"
     },
     {
-      "nome": "Conta Cliente X",
+      "nome": "Conta Secundaria",
+      "tag": "Conta02",
       "ad_account_id": "act_222222222",
       "access_token": "SEU_TOKEN_AQUI"
     },
     {
-      "nome": "Conta Cliente Y",
+      "nome": "Conta Reserva",
+      "tag": "Conta06",
       "ad_account_id": "act_333333333",
       "access_token": "SEU_TOKEN_AQUI"
     }

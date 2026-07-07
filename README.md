@@ -1,146 +1,156 @@
-# AdsPower + Meta Ads - Gerenciamento de Campanhas
+# Meta Ads Campaign Manager v1.0
 
-Ferramentas para gerenciar perfis AdsPower e campanhas Meta Ads de forma padronizada e segura.
+Sistema de criacao padronizada de campanhas Meta Ads com tags e suporte multi-conta.
 
-## IMPORTANTE - Seguranca das Contas
+## SEGURANCA
 
-- Campanhas sao SEMPRE criadas **PAUSADAS** - ative manualmente apos revisar
-- Scripts de analise sao **somente leitura** - nao modificam nada nas contas
-- Use a **Marketing API oficial** da Meta (nao automacao de UI)
-- **Nunca** automatize acoes dentro do Facebook/Instagram (curtir, postar, etc.)
-- **Nunca** commite tokens ou API keys - use variaveis de ambiente
-
-## Pre-requisitos
-
-- AdsPower instalado com API Local ativada (para gerenciamento de perfis)
-- Python 3.8+
-- Token da Meta Marketing API (ver setup abaixo)
-- `pip install -r requirements.txt`
+- Campanhas sao SEMPRE criadas **PAUSADAS**
+- Delay automatico entre contas para evitar padroes suspeitos
+- Use `--dry-run` para simular antes de criar
+- **Nunca** commite `accounts.json` com tokens reais
 
 ## Setup
 
-### 1. Variaveis de ambiente
+### 1. Instalar dependencias
 
 ```bash
-# AdsPower
-export ADSPOWER_API_URL="http://127.0.0.1:50325"
-export ADSPOWER_API_KEY="sua-api-key"
-
-# Meta Marketing API
-export META_ACCESS_TOKEN="seu-token-aqui"
-export META_AD_ACCOUNT_ID="act_123456789"
+pip install -r requirements.txt
 ```
 
-### 2. Obter token da Meta Marketing API
-
-1. Acesse https://developers.facebook.com
-2. Crie um app do tipo "Business"
-3. Adicione o produto "Marketing API"
-4. Gere um token com permissoes: `ads_management`, `ads_read`, `read_insights`
-
-## Uso - Campanhas Meta
-
-### Listar campanhas
+### 2. Configurar contas
 
 ```bash
 cd scripts/meta
-python campaigns.py list
-python campaigns.py list --status ACTIVE
+cp accounts.json.example accounts.json
 ```
 
-### Templates de campanha disponiveis
-
-```bash
-python campaigns.py templates
-```
-
-Templates: `conversao_trafego`, `conversao_vendas`, `engajamento`, `leads`, `awareness`
-
-### Criar campanha padronizada
-
-```bash
-# Campanha criada PAUSADA por seguranca
-python campaigns.py create "Vendas - Produto X" --template conversao_vendas --daily-budget 5000
-```
-
-### Conjuntos de anuncios (Ad Sets)
-
-```bash
-python adsets.py targeting           # Ver templates de segmentacao
-python adsets.py list                # Listar ad sets
-python adsets.py create "Publico BR" --campaign-id 123 --targeting brasil_amplo --daily-budget 3000
-```
-
-## Uso - Analise de Campanhas
-
-### Resumo da conta
-
-```bash
-cd scripts/meta
-python insights.py summary --period last_7d
-```
-
-### Comparar campanhas
-
-```bash
-python insights.py compare --period last_30d --sort spend
-```
-
-### Exportar relatorio CSV
-
-```bash
-python insights.py export --period last_30d --output relatorio.csv
-```
-
-### Alertas de gasto
-
-```bash
-python insights.py alerts --limit 10000  # Alerta acima de R$100/dia
-```
-
-### Insights detalhados
-
-```bash
-python insights.py insights --period last_7d
-python insights.py insights --campaign-id 123456 --breakdown age,gender
-```
-
-## Uso - Perfis AdsPower
-
-```bash
-python scripts/adspower_client.py status
-python scripts/adspower_client.py list
-python scripts/adspower_client.py open <user_id>
-python scripts/adspower_client.py close <user_id>
-```
-
-## Conectar via MCP Server (Claude Code local)
-
-O AdsPower oferece um MCP Server para controle por linguagem natural.
-**Requer Claude Code CLI rodando na sua maquina local.**
-
-Adicione ao `.claude/settings.json` ou `~/.claude/settings.json`:
+Edite `accounts.json` com os dados das suas contas:
 
 ```json
 {
-  "mcpServers": {
-    "adspower-local-api": {
-      "command": "npx",
-      "args": ["-y", "local-api-mcp-typescript", "--base-url", "http://127.0.0.1:50325"]
+  "contas": [
+    {
+      "nome": "Conta Principal",
+      "tag": "Conta01",
+      "ad_account_id": "act_111111111",
+      "access_token": "seu-token-aqui"
     }
-  }
+  ]
 }
+```
+
+Cada conta precisa de um token da Meta Marketing API com permissao `ads_management`.
+
+## Uso
+
+### Ver tags disponiveis
+
+```bash
+python campaigns.py tags
+```
+
+### Simular criacao (dry run)
+
+```bash
+python campaigns.py deploy \
+  --produto DS \
+  --orcamento CBO \
+  --estrutura 1-3-1 \
+  --ad-name "ADLAT23'" \
+  --segmentacao ID TOPM \
+  --tipo ASC \
+  --gestor Hugo \
+  --variacao "Copy 4" \
+  --daily-budget 5000 \
+  --dry-run
+```
+
+Resultado: `DS-CBO [1-3-1] | ADLAT23' [ID] [TOPM] [ASC] | 07-07-25 | Conta01 | Hugo - Copy 4`
+
+### Criar campanha em todas as contas
+
+```bash
+python campaigns.py deploy \
+  --produto DS \
+  --orcamento CBO \
+  --estrutura 1-3-1 \
+  --ad-name "ADLAT23'" \
+  --segmentacao ID TOPM \
+  --tipo ASC \
+  --gestor Hugo \
+  --variacao "Copy 4" \
+  --daily-budget 5000
+```
+
+### Criar em contas especificas
+
+```bash
+python campaigns.py deploy \
+  --produto DS \
+  --orcamento CBO \
+  --estrutura 1-3-1 \
+  --ad-name "ADLAT23'" \
+  --segmentacao BROAD \
+  --tipo MANUAL \
+  --gestor Hugo \
+  --contas "Conta Principal" "Conta Reserva" \
+  --daily-budget 3000
+```
+
+### Decompor nome de campanha existente
+
+```bash
+python campaigns.py parse "DS-CBO [1-3-1] | ADLAT23' [ID] [TOPM] [ASC] | 02-09-25 | Conta06 | Hugo - Copy 4"
+```
+
+### Listar campanhas de todas as contas
+
+```bash
+python campaigns.py list
+python campaigns.py list --status PAUSED
+python campaigns.py list --contas "Conta Principal"
+```
+
+## Tags
+
+As tags ficam em `tags.json`. Edite para adicionar novas:
+
+| Campo | Exemplo | Descricao |
+|-------|---------|-----------|
+| produto | DS, EC, IF | Produto sendo anunciado |
+| orcamento | CBO, ABO | Tipo de orcamento |
+| estrutura | 1-3-1, 1-5-1 | Campanhas-conjuntos-anuncios |
+| segmentacao | ID, LAL, TOPM, BROAD | Tipo de publico |
+| tipo_campanha | ASC, MANUAL, DCT | Modo da campanha |
+| conta | Conta01, Conta06 | Identificador da conta |
+| gestor | Hugo | Responsavel |
+
+## Formato do nome
+
+```
+{produto}-{orcamento} [{estrutura}] | {ad_name} [{segmentacao}] [{tipo}] | {data} | {conta} | {gestor} - {variacao}
 ```
 
 ## Estrutura
 
 ```
 scripts/
-  adspower_client.py        # Cliente AdsPower Local API
+  adspower_client.py             # Cliente AdsPower (gerenciamento de perfis)
   meta/
-    config.py               # Configuracao da Meta API
-    api_client.py            # Cliente base da Marketing API
-    campaigns.py             # Criar/listar campanhas com templates
-    adsets.py                # Criar/listar ad sets com segmentacao
-    insights.py              # Analise e relatorios de performance
+    accounts.json.example        # Modelo de configuracao de contas
+    accounts.json                # Suas contas (NAO commitar)
+    tags.json                    # Registro de tags
+    naming.py                    # Gerador de nomes com tags
+    campaigns.py                 # CLI principal - deploy multi-conta
+    api_client.py                # Cliente base da API (uso futuro)
+    config.py                    # Config via env vars (uso futuro)
+    adsets.py                    # Ad sets (uso futuro)
+    insights.py                  # Relatorios (uso futuro)
 ```
+
+## Roadmap
+
+- v1.0: Tags + criacao de campanhas pausadas multi-conta (atual)
+- v1.1: Dashboard de relatorios multi-conta
+- v1.2: Templates completos (campanha + ad sets + ads com uma tag)
+- v1.3: Integracao com AdsPower para abrir perfil e revisar

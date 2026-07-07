@@ -1,0 +1,58 @@
+{
+  "_doc": "Registro de tags para nomes de campanhas. Cada campo tem suas tags possiveis.",
+
+  "produto": {
+    "_desc": "Produto ou oferta sendo anunciado",
+    "DS": "Digital Service",
+    "EC": "E-commerce",
+    "IF": "Infoproduto",
+    "SV": "Servico Local"
+  },
+
+  "orcamento": {
+    "_desc": "Tipo de orcamento da campanha",
+    "CBO": "Campaign Budget Optimization (orcamento no nivel da campanha)",
+    "ABO": "Ad Set Budget Optimization (orcamento no nivel do conjunto)"
+  },
+
+  "estrutura": {
+    "_desc": "Estrutura da campanha no formato campanhas-conjuntos-anuncios",
+    "1-1-1": "1 campanha, 1 conjunto, 1 anuncio",
+    "1-3-1": "1 campanha, 3 conjuntos, 1 anuncio cada",
+    "1-5-1": "1 campanha, 5 conjuntos, 1 anuncio cada",
+    "1-1-3": "1 campanha, 1 conjunto, 3 anuncios",
+    "1-3-3": "1 campanha, 3 conjuntos, 3 anuncios cada"
+  },
+
+  "segmentacao": {
+    "_desc": "Tipo de segmentacao/publico utilizado",
+    "ID": "Interesses Detalhados",
+    "LAL": "Lookalike / Publico Semelhante",
+    "RTG": "Retargeting / Remarketing",
+    "TOPM": "Top of Mind / Publico Quente",
+    "BROAD": "Segmentacao Aberta (sem interesses)",
+    "CUSTOM": "Publico Personalizado"
+  },
+
+  "tipo_campanha": {
+    "_desc": "Tipo/modo da campanha no Meta Ads",
+    "ASC": "Advantage Shopping Campaign (Advantage+)",
+    "MANUAL": "Campanha Manual (sem Advantage+)",
+    "DCT": "Dynamic Creative Testing"
+  },
+
+  "conta": {
+    "_desc": "Identificador da conta de anuncio",
+    "Conta01": "Conta principal",
+    "Conta02": "Conta secundaria",
+    "Conta03": "Conta cliente X",
+    "Conta04": "Conta cliente Y",
+    "Conta05": "Conta reserva",
+    "Conta06": "Conta reserva 2"
+  },
+
+  "gestor": {
+    "_desc": "Responsavel pela campanha",
+    "Hugo": "Hugo"
+  }
+}
