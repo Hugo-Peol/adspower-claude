@@ -3,3 +3,4 @@ __pycache__/
 .env
 *.csv
 accounts.json
+.claude/settings.json

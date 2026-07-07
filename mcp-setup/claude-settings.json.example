@@ -1,0 +1,35 @@
+{
+  "_doc": "Copie para .claude/settings.json ou ~/.claude/settings.json",
+  "_doc2": "Cada conta Meta e um MCP server separado. Use o nome da conta como chave.",
+
+  "mcpServers": {
+    "meta-ads-conta01": {
+      "command": "npx",
+      "args": ["-y", "@mikusnuz/meta-ads-mcp"],
+      "env": {
+        "META_ADS_ACCESS_TOKEN": "TOKEN_DA_CONTA_01",
+        "META_AD_ACCOUNT_ID": "act_111111111"
+      }
+    },
+    "meta-ads-conta02": {
+      "command": "npx",
+      "args": ["-y", "@mikusnuz/meta-ads-mcp"],
+      "env": {
+        "META_ADS_ACCESS_TOKEN": "TOKEN_DA_CONTA_02",
+        "META_AD_ACCOUNT_ID": "act_222222222"
+      }
+    },
+    "meta-ads-conta06": {
+      "command": "npx",
+      "args": ["-y", "@mikusnuz/meta-ads-mcp"],
+      "env": {
+        "META_ADS_ACCESS_TOKEN": "TOKEN_DA_CONTA_06",
+        "META_AD_ACCOUNT_ID": "act_333333333"
+      }
+    },
+    "adspower-local-api": {
+      "command": "npx",
+      "args": ["-y", "local-api-mcp-typescript", "--base-url", "http://127.0.0.1:50325"]
+    }
+  }
+}
